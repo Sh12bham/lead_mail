@@ -30,8 +30,14 @@ checkEnvironmentVariables();
 const app = express();
 
 // Enable CORS
+const allowedOrigins = [
+  `http://localhost:${process.env.PORT || 5000}`,
+  `http://localhost:${process.env.CLIENT_PORT || 3000}`,
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: ['http://localhost:5000', 'http://localhost:3000'],
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -88,15 +94,15 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
+  // Try to use the specified port, or find an available port
+  const startPort = process.env.PORT ? Number(process.env.PORT) : 0; // 0 means any available port
   server.listen({
-    port,
+    port: startPort,
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`serving on port ${port}`);
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : startPort;
+    log(`Server running on port ${port}`);
   });
 })();
