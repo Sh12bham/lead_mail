@@ -34,13 +34,14 @@ export function LeadsUpload({ onLeadsUploaded }: LeadsUploadProps) {
     formData.append('file', file);
 
     try {
-      const response = await fetch('/api/upload-csv', {
+      const response = await fetch('http://localhost:5000/api/upload-csv', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error('Failed to upload file');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to upload file');
       }
 
       const data = await response.json();
@@ -54,7 +55,7 @@ export function LeadsUpload({ onLeadsUploaded }: LeadsUploadProps) {
       if (validLeads.length === 0) {
         toast({
           title: "No valid leads found",
-          description: "Your CSV must contain at least one lead with both NAME and COMPANY NAME filled in.",
+          description: "Your CSV must contain at least one lead with both NAME and COMPANY NAME columns filled in. Please check your CSV format and try again.",
           variant: "destructive",
         });
         return;
@@ -63,8 +64,8 @@ export function LeadsUpload({ onLeadsUploaded }: LeadsUploadProps) {
       if (validLeads.length < data.leads.length) {
         toast({
           title: "Some leads are incomplete",
-          description: `Only ${validLeads.length} out of ${data.leads.length} leads had required NAME and COMPANY NAME data.`,
-          variant: "destructive",
+          description: `${validLeads.length} out of ${data.leads.length} leads were valid. Please ensure all leads have NAME and COMPANY NAME filled in.`,
+          variant: "warning",
         });
       }
       

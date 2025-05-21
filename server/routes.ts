@@ -48,6 +48,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         trim: true,
       });
 
+      if (!records || records.length === 0) {
+        return res.status(400).json({ 
+          message: "CSV file is empty or has no valid data",
+          error: "Please ensure your CSV file contains data and has the correct format"
+        });
+      }
+
+      // Check for required columns
+      const requiredColumns = ["NAME", "COMPANY NAME"];
+      const missingColumns = requiredColumns.filter(col => !records[0].hasOwnProperty(col));
+      
+      if (missingColumns.length > 0) {
+        return res.status(400).json({
+          message: "CSV file is missing required columns",
+          error: `Missing columns: ${missingColumns.join(", ")}. Please ensure your CSV has NAME and COMPANY NAME columns.`
+        });
+      }
+
       // Map CSV records to Lead objects
       const leads: Lead[] = records.map((record: any) => {
         return {
@@ -60,22 +78,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate each lead
       const validatedLeads: Lead[] = [];
-      for (const lead of leads) {
+      const invalidLeads: { index: number; errors: string[] }[] = [];
+
+      leads.forEach((lead, index) => {
         try {
           const validLead = leadSchema.parse(lead);
           validatedLeads.push(validLead);
         } catch (error) {
-          console.error("Invalid lead data:", error);
-          // Skip invalid entries
+          if (error instanceof z.ZodError) {
+            invalidLeads.push({
+              index: index + 1,
+              errors: error.errors.map(err => err.message)
+            });
+          }
         }
-      }
+      });
 
       // Clean up the temporary file
       fs.unlinkSync(req.file.path);
 
+      if (validatedLeads.length === 0) {
+        return res.status(400).json({
+          message: "No valid leads found",
+          error: "All leads in the CSV file are invalid. Please ensure each lead has a name and company name.",
+          invalidLeads
+        });
+      }
+
       return res.status(200).json({
         message: "CSV processed successfully",
         leads: validatedLeads,
+        invalidLeads: invalidLeads.length > 0 ? invalidLeads : undefined
       });
     } catch (error) {
       console.error("Error processing CSV:", error);
@@ -101,13 +134,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // OpenRouter API integration
       const openRouterApiKey = process.env.OPENROUTER_API_KEY;
       
-      // Check if API key is available
+      // Check if API key is available and clean it
       if (!openRouterApiKey) {
         return res.status(500).json({
           message: "Failed to generate emails",
           error: "OPENROUTER_API_KEY environment variable is not set"
         });
       }
+
+      // Clean the API key once at the start
+      const cleanApiKey = openRouterApiKey.trim().replace(/^["']|["']$/g, '');
       
       // Generate emails for each lead
       const generatedEmails: GeneratedEmail[] = [];
@@ -344,7 +380,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `;
 
       console.log(`Making API call to OpenRouter for lead: ${validatedData.lead.name}`);
-      console.log(`Using API key starting with: ${openRouterApiKey.substring(0, 10)}...`);
+      let cleanApiKey = "";
+      if (openRouterApiKey) {
+        cleanApiKey = openRouterApiKey.trim().replace(/^"|"$/g, '');
+        console.log(`Using API key starting with: ${cleanApiKey.substring(0, 10)}...`);
+      } else {
+        console.error("OPENROUTER_API_KEY environment variable is not set!");
+        throw new Error("OPENROUTER_API_KEY environment variable is not set");
+      }
         
       // Make API call to OpenRouter
       const requestBody = {
@@ -366,7 +409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${openRouterApiKey}`,
+            "Authorization": `Bearer ${cleanApiKey}`,
             "HTTP-Referer": process.env.REPLIT_DOMAINS || "https://localhost:5000",
             "X-Title": "AI Email Generator"
           },

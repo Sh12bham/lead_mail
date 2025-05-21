@@ -41,10 +41,10 @@ export type EmailSettings = z.infer<typeof emailSettingsSchema>;
 
 // Lead data schema
 export const leadSchema = z.object({
-  name: z.string(),
-  companyName: z.string(),
+  name: z.string().min(1, "Name is required"),
+  companyName: z.string().min(1, "Company name is required"),
   productDescription: z.string().optional(),
-  email: z.string().optional(),
+  email: z.string().email("Invalid email format").optional(),
 });
 
 export type Lead = z.infer<typeof leadSchema>;
